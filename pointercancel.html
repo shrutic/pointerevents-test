@@ -6,16 +6,18 @@
 	This document references Test Assertions (abbrev TA below) written by Cathy Chan
 -->
 <head>
-	<title>Pointer Events pointerdown Tests</title>
+	<title>Pointer Events pointercancel Tests</title>
 	<meta name="viewport" content="width=device-width">
-	<link rel="author" href="mailto:shruti@malugu.com">
+	<link rel="author" href="mailto:scott.gonzalez@gmail.com">
 	<link rel="author" href="mailto:dave.methvin@gmail.com">
+	<link rel="author" href="mailto:satyajit@outlook.com">
 	<link rel="help" href="http://www.w3.org/wiki/PointerEvents/TestAssertions">
 	<!-- http://w3c-test.org/resources/testharness.js -->
 	<script src="./testharness.js"></script>
 	<script src="pointer-prefix.js"></script>
 	<script>
 	setup({ explicit_done: true });
+
 
 	var detected_pointertypes = {};
 	add_completion_callback(showPointerTypes);
@@ -109,7 +111,7 @@
 					event.type + ".isPrimary is true for mouse");
 			}, event.type + " properties for pointerType=mouse");
 		// Check properties for pointers other than mouse
-		} else{
+		} else {
 			// TA: 1.12
 			test(function() {
 				assert_true(event.pointerId !== 1,
@@ -118,69 +120,79 @@
 		}
 	}
 
+	function determineMaxPoints()
+	{
+        var touch_points_required = document.getElementById("touch-points-required");
+        touch_points_required.innerHTML = window.navigator[pointerPrefix.maxTouchPoints] + 1;
+    }
+
 	function run() {
+		determineMaxPoints();
 		var target0 = document.getElementById("target0");
-		var test_pointerup = async_test("pointerup event received");		
+		var test_pointerout = async_test("pointerout event received");
+
 		var pointerdown_event = null;
-		var pointerup_event = null;
-		
+		var pointerout_event = null;
+
 		on_event(target0, pointerPrefix["pointerdown"], function(event) {
 			pointerdown_event = event;
 			check_PointerEvent(event);
+
 			detected_pointertypes[ event.pointerType ] = true;
 		});
-		
-		//TA 3.3
-		on_event(target0, pointerPrefix["pointerup"], function(event) {
-			check_PointerEvent(event);
-			pointerup_event = event;
-			test_pointerup.step(function() {
-			    //TA 3.1
-				assert_equals(event.pointerType, pointerdown_event.pointerType,
-					"pointerType is same for pointerdown and pointerup");
-				//TA 3.2
-				assert_equals(event.isPrimary, pointerdown_event.isPrimary,
-					"isPrimary is same for pointerdown and pointerup");
-					assert_equals(event.pointerId, pointerdown_event.pointerId,
-					"pointerID is same for pointerdown and pointerup");
+
+        // Currently Pointer out is being fired after pointer down but the specification
+        // asks for pointer out after pointer cancel change these tests after this bug is resolved
+        // https://www.w3.org/Bugs/Public/show_bug.cgi?id=21686
+
+		// Capturing pointer out event
+		on_event(target0, pointerPrefix["pointerout"], function(pointerOutEvent) {
+			check_PointerEvent(pointerOutEvent);
+			pointerout_event = pointerOutEvent;
+
+			// TA: 4.1, 4.2
+			test_pointerout.step(function() {
+				assert_equals(pointerOutEvent.pointerId, pointerdown_event.pointerId,
+					"pointerId is same for pointerout and pointerdown");
+				assert_equals(pointerOutEvent.pointerType, pointerdown_event.pointerType,
+					"pointerType is same for pointerout and pointerdown");
+				assert_equals(pointerOutEvent.isPrimary, pointerdown_event.isPrimary,
+					"isPrimary is same for pointerout and pointerdown");
 			});
 
-			detected_pointertypes[ event.pointerType ] = true;
+			detected_pointertypes[ pointerOutEvent.pointerType ] = true;
 
-			test_pointerup.done();			
+			test_pointerout.done();
 		});
-		
-		//TA 3.6
-		on_event(target0, pointerPrefix["pointerout"], function(event) {
-			check_PointerEvent(event);
-			// The pointerOut event that we can test is the one fired after the Pointer up event
-			if (pointerup_event != null)
-			{
-			    var test_pointerout = async_test("test pointer out event received");
-				test_pointerout.step(function() {
-				   switch(event.pointerType)
-				   {
-					   case 4: //Mouse
-						assert_true(true);
-					   break;
-					   default: //pen or touch
-						assert_equals(event.pointerType, pointerup_event.pointerType,
-							"pointerType is same for pointerup and pointerout");
-						assert_equals(event.isPrimary, pointerup_event.isPrimary,
-							"isPrimary is same for pointerup and pointerout");
-						assert_equals(event.pointerId, pointerup_event.pointerId,
-							"pointerID is same for pointerup and pointerdown");
-					}
-				});
 
-				detected_pointertypes[ event.pointerType ] = true;
-				test_pointerout.done();	
+		//Capturing pointer cancel event
+		on_event(target0, pointerPrefix["pointercancel"], function(pointerCancelEvent) {
+			check_PointerEvent(pointerCancelEvent);
+
+			//Pointer out happens before pointer cancel
+			if(pointerout_event != null)
+			{
+				var test_pointercancel = async_test("pointercancel event received");
+				//TA: 4.3
+				test_pointercancel.step(function() {
+					assert_equals(pointerCancelEvent.pointerId, pointerout_event.pointerId,
+						"pointerId is same for pointerout and pointercancel");
+					assert_equals(pointerCancelEvent.pointerType, pointerout_event.pointerType,
+						"pointerType is same for pointerout and pointercancel");
+					assert_equals(pointerCancelEvent.isPrimary, pointerout_event.isPrimary,
+						"isPrimary is same for pointerout and pointercancel");
+				});
+				detected_pointertypes[ pointerCancelEvent.pointerType ] = true;
+
+				test_pointercancel.done();
 			}
 		});
 	}
 
 	function showPointerTypes() {
-		var complete_notice = document.getElementById("complete-notice");
+  
+        var complete_notice = document.getElementById("complete-notice");
+
 		var pointertype_log = document.getElementById("pointertype-log");
 		var pointertypes = Object.keys(detected_pointertypes);
 		pointertype_log.innerHTML = pointertypes.length ?
@@ -190,9 +202,12 @@
 
 	</script>
 	<style>
+	    html {
+	    	touch-action: none;
+	    }
 		div {
 			margin: 0em;
-			padding: 2em;
+			padding: 5em;
 		}
 		#target0 {
 			background: yellow;
@@ -209,11 +224,11 @@
 	</style>
 </head>
 <body onload="run()">
-	<h1>Pointer Events pointerup Tests</h1>
+	<h1>Pointer Events pointercancel Tests</h1>
 	<div id="target0">
-		Start with your pointing device outside of this box, then click here and release the mouse button/touch point. <br/>
-		If using a mouse, do NOT remove the mouse cursor out of this box until tests complete <br/>
-		Note that touch input test cases require that your input device does not support hover capability
+		Start with your pointing device outside of this box, then tap here with <span id="touch-points-required"> </span> fingers.
+		<br/>
+		After tapping hold your breath and don't touch/move mouse untill tests are run
 	</div>
 	<div id="complete-notice">
 		<p>The following pointer types were detected: <span id="pointertype-log"></span>.</p>
